@@ -3,6 +3,11 @@
 
 #define MAX_HEAP 0
 #define MIN_HEAP 1
+#define INC_SORT 2
+#define DEC_SORT 3
+
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
 typedef struct city_t {
         int pos_in_heap;
@@ -11,6 +16,9 @@ typedef struct city_t {
         int next_id;
 	int checked;
 	int d_pool_index;
+	int accum_route_len;
+	int accum_max_priority;
+	int accum_min_priority;
 } City;
 
 City **cities_by_id = NULL;
@@ -64,17 +72,17 @@ int is_empty(Pot_Route *pot_route) {
 	return result;
 }
 
-int *heapify (int *A, int i, int *V1, int *V2, int heap_size, int heap_mode, int store_positions) {
+int *heapify (int *A, int i, int *V, int heap_size, int heap_mode, int store_positions) {
 	int left = 2*i + 1;
 	int right = 2*i + 2;
 	int largest = i;
 	int smallest = i;	
 
-	if (heap_mode == MAX_HEAP && V2 == NULL) {
-		if (left < heap_size && V1[A[left]] > V1[A[i]]) {
+	if (heap_mode == MAX_HEAP) {
+		if (left < heap_size && V[A[left]] > V[A[i]]) {
     			largest = left;
 		}
-  		if (right < heap_size && V1[A[right]] > V1[A[largest]]) {
+  		if (right < heap_size && V[A[right]] > V[A[largest]]) {
    	 		largest = right;
 		}
   		if (largest != i) {
@@ -87,13 +95,13 @@ int *heapify (int *A, int i, int *V1, int *V2, int heap_size, int heap_mode, int
 				cities_by_id[A[largest]]->pos_in_heap = largest;
 			}
 
-        		A = heapify(A, largest, V1, V2, heap_size, heap_mode, store_positions);
+        		A = heapify(A, largest, V, heap_size, heap_mode, store_positions);
 		}
-	} else if (heap_mode == MIN_HEAP && V2 == NULL) {
-		if (left < heap_size && V1[A[left]] < V1[A[i]]) {
+	} else if (heap_mode == MIN_HEAP) {
+		if (left < heap_size && V[A[left]] < V[A[i]]) {
                         smallest = left;
                 }
-                if (right < heap_size && V1[A[right]] < V1[A[smallest]]) {
+                if (right < heap_size && V[A[right]] < V[A[smallest]]) {
                         smallest = right;
                 }
                 if (smallest != i) {
@@ -106,43 +114,22 @@ int *heapify (int *A, int i, int *V1, int *V2, int heap_size, int heap_mode, int
                                 cities_by_id[A[smallest]]->pos_in_heap = smallest;
                         }			
 
-                        A = heapify(A, smallest, V1, V2, heap_size, heap_mode, store_positions);
+                        A = heapify(A, smallest, V, heap_size, heap_mode, store_positions);
                 }
-
-	} else if (heap_mode == MAX_HEAP && V2 != NULL) {
-		if (left < heap_size && (V1[A[left]] > V1[A[i]] || (V1[A[left]] == V1[A[i]] && V2[A[left]] > V2[A[i]]))) {
-                        largest = left;
-                }
-                if (right < heap_size && (V1[A[right]] > V1[A[largest]] || (V1[A[right]] == V1[A[largest]] && V2[A[right]] > V2[A[largest]]))) {
-                        largest = right;
-                }	
-
-                if (largest != i) {
-                        int buff = A[i];
-                        A[i] = A[largest];
-                        A[largest] = buff;
-
-                        if (cities_by_id != NULL && store_positions) {
-                                cities_by_id[A[i]]->pos_in_heap = i;
-                                cities_by_id[A[largest]]->pos_in_heap = largest;
-                        }
-
-                        A = heapify(A, largest, V1, V2, heap_size, heap_mode, store_positions);
-		}
 	}	
 	return A;
 }
 
-int *build_heap(int *A, int N, int *V1, int *V2, int heap_mode, int store_positions) {
+int *build_heap(int *A, int N, int *V, int heap_mode, int store_positions) {
   	int heap_size = N;
 	for (int i = (int)(N/2); i >= 0; i--) {
-    		A = heapify(A, i, V1, V2, heap_size, heap_mode, store_positions);
+    		A = heapify(A, i, V, heap_size, heap_mode, store_positions);
 	}
 	return A;
 }
 
-int *heap_sort(int *A, int N, int *V1, int *V2, int heap_mode, int store_positions) {
-	A = build_heap(A, N, V1, V2, heap_mode, store_positions);
+int *heap_sort(int *A, int N, int *V, int heap_mode, int store_positions) {
+	A = build_heap(A, N, V, heap_mode, store_positions);
 	int heap_size = N;
 
 	for (int i = N-1; i >= 0; i--) {
@@ -156,7 +143,7 @@ int *heap_sort(int *A, int N, int *V1, int *V2, int heap_mode, int store_positio
 		}	
 
        		heap_size--;
-       		A = heapify(A, 0, V1, V2, heap_size, heap_mode, store_positions);
+       		A = heapify(A, 0, V, heap_size, heap_mode, store_positions);
 	}
 	return A;
 }
@@ -205,84 +192,155 @@ void swap (int *A, int i_1, int i_2, int store_positions) {
 	}
 }
 
-int find_next_adj(int *A, int N, int *V, int i, int **visited) {
-	int  first = 0;
-	int last = N-1;
+int left_b_search(int *A, int sort_mode, int first, int last, int *V, int key) {
 
-	if(first == last) {
-		if(V[A[first]] == i && (*visited)[A[first]] == 0) {
-                        return A[first];
+        if(first == last) {
+                if(V[A[first]] == key) {
+                        return first;
                 } else {
                         return -1;
                 }
-	} else if (V[A[0]] > i) {
-		return -1;
-	} else if (V[A[N-1]] < i) {
-		return -1;
-	}
+        }
 
-	while (first < last) {
-		if (V[A[first]] == V[A[last]] && V[A[first]] == i) {
-			break;
-		}
-
-		int mid = first + (last - first) / 2;
+	if (sort_mode == INC_SORT) {
 		
-		if (i <= V[A[mid]]) {
-			last = mid;
-		} else {
-			first = mid + 1;
-		}
+		if (V[A[first]] > key) {
+                	return -1;
+        	} else if (V[A[last]] < key) {
+                	return -1;
+        	}
+	
+	} else if (sort_mode == DEC_SORT) {
+		
+		if (V[A[first]] < key) {
+                	return -1;
+        	} else if (V[A[last]] > key) {
+                	return -1;
+        	}
+
 	}
 
-	for (int j=first; j < N; j++) {
-                if (V[A[j]] == i && (*visited)[A[j]] == 0) {
-                        return A[j];
-                } else if(V[A[j]] != i) {
+        while (first < last) {
+		if (V[A[first]] == V[A[last]] && V[A[first]] == key) {
+         		return first;
+                }
+
+                int mid = first + (last - first) / 2;
+		
+		if (sort_mode == INC_SORT) {
+      			
+			if (key <= V[A[mid]]) {
+        		 	last = mid;
+       			} else {
+        			first = mid + 1;
+      			}
+	
+		} else if (sort_mode == DEC_SORT) {
+
+			if (key >= V[A[mid]]) {
+                                last = mid;
+                        } else {
+                                first = mid + 1;
+                        }			
+		}
+        }
+	
+	if (V[A[first]] == key) {
+		return first;
+	} else {
+		return -1;
+	}
+}
+
+int right_b_search (int *A, int sort_mode, int first, int last, int *V, int key) {
+
+	if(first == last) {
+                if(V[A[first]] == key) {
+                        return last;
+                } else {
                         return -1;
                 }
         }
-	return -1;
-}
 
-int spare (int *d_cities, int first, int last, int city, int *D, int **d_pool) {
+        if (sort_mode == INC_SORT) {
 
-        if (first == last) {
-                if((*d_pool)[first] == 0) {
-			return first;
-		} else {
-			return -1;
-		}
-        } else if (D[d_cities[first]] < D[city]) {
-                return -1;
-        } else if (D[d_cities[last]] > D[city]) {
-                return -1;
+                if (V[A[first]] > key) {
+                        return -1;
+                } else if (V[A[last]] < key) {
+                        return -1;
+                }
+
+        } else if (sort_mode == DEC_SORT) {
+
+                if (V[A[first]] < key) {
+                        return -1;
+                } else if (V[A[last]] > key) {
+                        return -1;
+                }
         }
-
-        while (first < last) {
-		if (D[d_cities[first]] == D[d_cities[last]] && D[d_cities[first]] == D[city]) {
-			break;
+        
+	while (first < last) {
+                if (V[A[first]] == V[A[last]] && V[A[first]] == key) {
+                        return last;
                 }
 
                 int mid = (int )(last - (last - first) / 2);
 
-                if (D[city] <= D[d_cities[mid]]) {
-                        first = mid;
-                } else {
-                        last = mid - 1;
-                }
-        }
+		if (sort_mode == DEC_SORT) {
+		
+                	if (key <= V[A[mid]]) {
+                	        first = mid;
+                	} else {
+                	        last = mid - 1;
+                	}
+ 
+		} else if (sort_mode == INC_SORT) {
 
-	for (int i=last; i >= 0; i--) {
-		if (D[d_cities[i]] == D[city] && (*d_pool)[i] == 0) {
-			return i;
-		} else if(D[d_cities[i]] > D[city]) {
-			return -1;
+			if (key >= V[A[mid]]) {
+                                first = mid;
+                        } else {
+                                last = mid - 1;
+                        }
 		}
+        }
+	
+	if (V[A[last]] == key) {
+		return last;
+	} else {
+        	return -1;
 	}
-        return -1;
 }
 
+void find_leafs (int **leafs, int *size, int *ids_sorted_by_c, int *C, int N) {
+	for (int k=0; k<N; k++) {
+		if (-1 == left_b_search(ids_sorted_by_c, INC_SORT, 0, N-1, C, k)) {
+			(*leafs)[*size] = k;
+			(*size)++;
+		}
+	}
+}
+
+void accum_knots (int *leafs, int leafs_size, int min_priority) {
+	for (int i=0; i<leafs_size; i++) {
+		City *city = cities_by_id[leafs[i]];
+		City *prev_city = NULL;
+
+		city->accum_route_len = city->priority >= min_priority ? 1 : 0;
+		city->accum_min_priority = city->priority >= min_priority ? city->priority : -1;
+		city->accum_max_priority = city->priority >= min_priority ? city->priority : -1;
+
+		do {
+			prev_city = city;
+			city = cities_by_id[prev_city->next_id];
+			
+			city->accum_route_len = city->priority >= min_priority ? 1 + prev_city->accum_route_len : 0;	
+			city->accum_max_priority = city->priority >= min_priority ? MAX(city->priority, prev_city->accum_max_priority) : -1;
+			city->accum_min_priority = city->priority >= min_priority ? MIN(city->priority, prev_city->accum_min_priority) : -1;
+
+		} while (city->next_id != city->id);
+	}
+}
+/*
 int check_routeness (
 	int *ids_sorted_by_c,
 	int *ids_sorted_by_d, 
@@ -333,7 +391,7 @@ int check_routeness (
 	shift_to_root(*priority_pool, summoned->pos_in_heap, 1);
         swap(*priority_pool, 0, (*priority_pool_size) - 1, 1);
         (*priority_pool_size)--;
-        *priority_pool = heapify(*priority_pool, 0, D, NULL, *priority_pool_size, MAX_HEAP, 1);
+        *priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
 	add_to_pool(pot_route, summoned);
 		
         int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
@@ -374,28 +432,6 @@ printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min
 				*priority_threshold = pot_priority_threshold;
 			} 
 			return route_len;
-		/*
-				(*route_len) -= (*pot_route).len;
-                        	//TODO : unsummon all summon cities to priority_pool. Use binomial heaps instead                
-printf("unsummon : pool size = %d, pot len = %d, route len = %d\n", *priority_pool_size, pot_route->len, *route_len);           
-
-                        	City *unsummoned = extract_from_pool(pot_route);
-                        	while (unsummoned != NULL) {
-                                	printf("pot pool size : %d\n", pot_route->priority_pool_size);
-
-                                	(*priority_pool)[*priority_pool_size] = unsummoned->id;
-                                	unsummoned->pos_in_heap = *priority_pool_size;
-                                	shift_up(*priority_pool, unsummoned->pos_in_heap, D, 1);
-                                	(*priority_pool_size)++;
-
-                                	(*d_pool)[unsummoned->d_pool_index] = 0;
-                                	unsummoned->d_pool_index = -1;
-
-                                	(*visited)[unsummoned->id] = 0;
-
-                                	unsummoned = extract_from_pool(pot_route);
-                        	}
-                       	 	drop(pot_route); */
 		}
 	}
 	
@@ -455,6 +491,7 @@ printf("UNSUMMON : pool size = %d, pot len = %d, route len = %d\n", *priority_po
 
 	return route_len;
 }
+*/
 
 int solution(int K, int C[], int D[], int N) {
 
@@ -470,23 +507,36 @@ int solution(int K, int C[], int D[], int N) {
 		city->priority = D[i];
 		city->checked = 0;
 		city->d_pool_index = -1;
+		city->accum_route_len = 0;
+		city->accum_min_priority = -1;
+		city->accum_max_priority = -1;
 		cities_by_id[i] = city;
-		
+			
 		A_D[i] = i;
                 A_C[i] = i;
 	}
 	
 	//Build heap by D
-        int *ids_sorted_by_d = heap_sort(A_D, N, D, NULL, MIN_HEAP, 1);
+        int *ids_sorted_by_d = heap_sort(A_D, N, D, MIN_HEAP, 1);
         //Sort cities by C to find element in log(n) time
-        int *ids_sorted_by_c = heap_sort(A_C, N, C, D, MAX_HEAP, 0);
+        int *ids_sorted_by_c = heap_sort(A_C, N, C, MAX_HEAP, 0);
 
 	int max_route_len = 0;
 
 	int min_priority = D[ids_sorted_by_d[K-1]];
 	int max_priority = D[ids_sorted_by_d[0]];	
 
-	//For all not checked cities with maximum atraction
+	int *leafs = (int *)calloc(N, sizeof(int));
+	int size = 0;
+	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
+	
+	printf("\n");
+	for (int i=0; i<size; i++) printf("%d ", leafs[i]);
+	printf("\n");
+
+	accum_knots (leafs, size, min_priority);
+
+/*
 	for (int i=0; i<N; i++) {
 		City *city = cities_by_id[ids_sorted_by_d[i]];
 		if (city->priority < max_priority) {
@@ -548,13 +598,14 @@ int solution(int K, int C[], int D[], int N) {
 		free(pot_route->summoned_pool);
         	free(pot_route);
 	}
-	
+*/	
 	if (max_route_len > K) {
 		max_route_len = K;
 	}	
 
 	for (int i=0; i<N; i++) free(cities_by_id[i]);
 	free(cities_by_id);
+	free(leafs);
 	free(A_C);
         free(A_D);	
 
