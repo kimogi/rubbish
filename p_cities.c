@@ -14,8 +14,9 @@ typedef struct city_t {
         int priority;
         int id;
         int next_id;
-	int checked;
 	int d_pool_index;
+	int ids_sorted_by_d_index;
+	int accumed;
 	int accum_route_len;
 	int accum_max_priority;
 	int accum_min_priority;
@@ -26,45 +27,37 @@ City **cities_by_id = NULL;
 typedef struct pot_route_t {
         int len;
         int min_priority;
-	int *summoned_pool;
-	int summoned_pool_size;
+	int cities_size;
+	int *cities;
 } Pot_Route;
-
-void add_city (Pot_Route *pot_route, City *city) {
-	(pot_route->len)++;
-	if (pot_route->min_priority == -1) {
-		pot_route->min_priority = city->priority;
-	} else if (pot_route->min_priority > city->priority) {
-		pot_route->min_priority = city->priority;
-	}
-}
-
-void remove_city (Pot_Route *pot_route) {
-        (pot_route->len)--;
-        if (pot_route->len == 0) {
-                pot_route->min_priority = -1;
-        }
-}
-
-
-void add_to_pool (Pot_Route *pot_route, City *city) {
-	pot_route->summoned_pool[pot_route->summoned_pool_size] = city->id;
-        (pot_route->summoned_pool_size)++;
-}
-
-City *extract_last_summoned(Pot_Route *pot_route) {
-	if (pot_route->summoned_pool_size > 0) {
-		(pot_route->summoned_pool_size)--;
-		return cities_by_id[pot_route->summoned_pool[pot_route->summoned_pool_size]];
-
-	}
-	return NULL;
-}
 
 void drop(Pot_Route *pot_route) {
 	pot_route->len = 0;
 	pot_route->min_priority = -1;
-	pot_route->summoned_pool_size = 0;
+	free(pot_route->cities);
+	pot_route->cities = (int *)calloc(pot_route->cities_size, sizeof(int));
+}
+
+void add_city(Pot_Route *pot_route, City* city) {
+	(pot_route->len)++;
+	pot_route->cities[city->id] = 1;
+	if (pot_route->min_priority == -1) {
+		pot_route->min_priority = city->priority;
+	} else if(pot_route->min_priority > city->priority) {
+		pot_route->min_priority = city->priority;
+	}
+}
+
+int contains(Pot_Route *pot_route, City *city) {
+	return pot_route->cities[city->id];
+}
+
+void remove_city(Pot_Route *pot_route, City *city) {
+	(pot_route->len)--;
+	pot_route->cities[city->id] = 0;
+        if (pot_route->len == 0) {
+                pot_route->min_priority = -1;
+        }
 }
 
 int is_empty(Pot_Route *pot_route) {
@@ -324,23 +317,111 @@ void accum_knots (int *leafs, int leafs_size, int min_priority) {
 	for (int i=0; i<leafs_size; i++) {
 		City *city = cities_by_id[leafs[i]];
 		City *prev_city = NULL;
-
-		city->accum_route_len = city->priority >= min_priority ? 1 : 0;
-		city->accum_min_priority = city->priority >= min_priority ? city->priority : -1;
-		city->accum_max_priority = city->priority >= min_priority ? city->priority : -1;
+		
+		if (city->priority >= min_priority) {
+			city->accum_route_len = 1;
+			city->accum_min_priority = city->priority;
+			city->accum_max_priority = city->priority;
+		} else {
+			city->accum_route_len = 0;
+                        city->accum_min_priority = -1;
+                        city->accum_max_priority = -1;
+		}
+		city->accumed = 1;
 
 		do {
 			prev_city = city;
 			city = cities_by_id[prev_city->next_id];
 			
-			city->accum_route_len = city->priority >= min_priority ? 1 + prev_city->accum_route_len : 0;	
-			city->accum_max_priority = city->priority >= min_priority ? MAX(city->priority, prev_city->accum_max_priority) : -1;
-			city->accum_min_priority = city->priority >= min_priority ? MIN(city->priority, prev_city->accum_min_priority) : -1;
-
+			if (city->priority >= min_priority) {
+				if (city->accumed == 0) {
+					city->accum_route_len =  1 + prev_city->accum_route_len;	
+					city->accum_max_priority = MAX(city->priority, prev_city->accum_max_priority);
+					city->accum_min_priority = MIN(city->priority, prev_city->accum_min_priority);
+				} else {
+					city->accum_route_len = MAX(city->accum_route_len, prev_city->accum_route_len);                     
+                                        city->accum_max_priority = MAX(city->accum_max_priority, prev_city->accum_max_priority);
+                                        city->accum_min_priority = MIN(city->accum_min_priority, prev_city->accum_min_priority);
+				}
+			} else {
+				city->accum_route_len =  0;
+                        	city->accum_max_priority = -1;
+                        	city->accum_min_priority = -1;
+			}
+			city->accumed = 1;
+			
 		} while (city->next_id != city->id);
 	}
 }
-/*
+
+int find_vacant_index_in_pool (int *ids_sorted_by_d, int pool_size, int id, int *D, int *d_pool) {
+	int l_i = left_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, D[id]);
+	int r_i = right_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, D[id]);
+
+	if (l_i == -1 || r_i == -1) {
+		printf("error: no such priority in pool\n");
+		return -2;
+	}
+	for (int i = l_i; i <= r_i; i++) {
+		if (d_pool[i] == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int find_vacant_adjacent_id (int *ids_sorted_by_c, int size, int id, int *C, int *visited) {
+        int l_i = left_b_search (ids_sorted_by_c, INC_SORT, 0, size - 1, C, id);
+        int r_i = right_b_search (ids_sorted_by_c, INC_SORT, 0, size - 1, C, id);
+
+        if (l_i == -1 || r_i == -1) {
+                return -1;
+        }
+        for (int i = l_i; i <= r_i; i++) {
+                if (visited[ids_sorted_by_c[i]] == 0) {
+                        return ids_sorted_by_c[i];
+                }
+        }
+        return -1;
+}
+
+int find_shortest_branch_id(int *ids_sorted_by_d, int pool_size, int priority, int *D) {
+	int l_i = left_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, priority);
+        int r_i = right_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, priority);
+	
+	if (l_i == -1 || r_i == -1) {
+		printf("error: no such priority in pool\n");
+                return -2;
+        }
+
+	City* shortest_brunch_city = cities_by_id[ids_sorted_by_d[l_i]];
+	for (int i = l_i; i <= r_i; i++) {
+		City *city = cities_by_id[ids_sorted_by_d[i]];
+		if (city->accum_route_len < shortest_brunch_city->accum_route_len) {
+			shortest_brunch_city = city;
+		}
+	}	
+	return shortest_brunch_city->id;
+}
+
+void swap_complete (int *ids_sorted_by_d, int i_1, int i_2) {
+	City *city_1 = cities_by_id[ids_sorted_by_d[i_1]];
+	City *city_2 = cities_by_id[ids_sorted_by_d[i_2]];	
+
+	swap (ids_sorted_by_d, i_1, i_2, 0);
+	
+	city_1->ids_sorted_by_d_index = i_2;
+	city_2->ids_sorted_by_d_index = i_1;
+	
+	int buff = city_1->d_pool_index;
+        city_1->d_pool_index = city_2->d_pool_index;
+        city_2->d_pool_index = buff;
+
+        buff = city_1->pos_in_heap;
+        city_1->pos_in_heap = city_2->pos_in_heap;
+        city_2->pos_in_heap = buff;
+}
+
 int check_routeness (
 	int *ids_sorted_by_c,
 	int *ids_sorted_by_d, 
@@ -355,7 +436,8 @@ int check_routeness (
 	int min_priority, 
 	int *D, 
 	int *C, 
-	int **visited) {
+	int **visited,
+	int *curr_route_len) {
 
 	int route_len = 0;
 	printf("\nchecking city : %d\n", city->id);
@@ -371,79 +453,77 @@ int check_routeness (
 		return 0;
 	}
 
-	int spare_index = spare(ids_sorted_by_d, 0, K-1, city->id, D, d_pool);
-	
-	if (spare_index == -1) {
-		(*visited)[city->id] = 1;
-		printf("No places in pool\n");
-		return -1;
-	}
+	int vacant_pool_index = find_vacant_index_in_pool(ids_sorted_by_d, K, city->id, D, *d_pool);
+
+        if (vacant_pool_index == -1) {
+                (*visited)[city->id] = 1;
+                printf("NO PLACES IN POOL\n");
+                return -1;
+        }
+
+	int sum_route_len = *curr_route_len + pot_route->len;
+	printf("sum route len : %d + %d\n", *curr_route_len, pot_route->len);
+
+        if (sum_route_len > K) {
+                (*visited)[city->id] = 1;
+                printf("route lne exceeded\n");
+                return 0;
+        }
 
 	(*visited)[city->id] = 1;
 	route_len++;
-	(*d_pool)[spare_index] = 1;
+	(*d_pool)[vacant_pool_index] = 1;
 
-	City *summoned = cities_by_id[ids_sorted_by_d[spare_index]];
-	summoned->d_pool_index = spare_index;
-		
-	printf("summoned pos in heap : %d, summoned d pool index : %d\n", summoned->pos_in_heap, summoned->d_pool_index);
-		
-	shift_to_root(*priority_pool, summoned->pos_in_heap, 1);
-        swap(*priority_pool, 0, (*priority_pool_size) - 1, 1);
-        (*priority_pool_size)--;
-        *priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
-	add_to_pool(pot_route, summoned);
-		
+	add_city(pot_route, city);
+        printf("pot route increased : %d\n", pot_route->len);
+
+	City *vacant_pool_city = cities_by_id[ids_sorted_by_d[vacant_pool_index]];
+	vacant_pool_city->d_pool_index = vacant_pool_index;
+
+	if (vacant_pool_city->id != city->id) {
+		printf("swap %d and %d\n", vacant_pool_city->id, city->id);
+		swap_complete (ids_sorted_by_d, vacant_pool_city->ids_sorted_by_d_index, city->ids_sorted_by_d_index);
+	}	
+
+	printf("summon city : %d, position in heap : %d, pool index : %d\n", city->id, city->pos_in_heap, city->d_pool_index);
+	
+	shift_to_root(*priority_pool, city->pos_in_heap, 1);
+	swap(*priority_pool, 0, (*priority_pool_size) - 1, 1);
+	(*priority_pool_size)--;
+	*priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
+
         int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
 	printf("pot priority threshold : %d, pool size : %d\n", pot_priority_threshold, *priority_pool_size);	
+	for(int i=0; i<N; i++) printf("%d ", ids_sorted_by_d[i]);
+        printf("\n");
+	for(int i=0; i<N; i++) printf("%d ", D[ids_sorted_by_d[i]]);
+        printf("\n");
 	for(int i=0; i<K; i++) printf("%d ", (*d_pool)[i]);
 	printf("\n");
 	for(int i=0; i<N; i++) printf("%d ", (*visited)[i]);
         printf("\n");	
 	printf("city prior : %d,  current threshold : %d\n", city->priority, *priority_threshold);
 
-	if (city->priority < *priority_threshold) {
-		add_city(pot_route, city);
-		printf("pot route increased : %d\n", pot_route->len);		
 
-	} else if (city->priority == *priority_threshold) {				
-		
-		if (route_len + pot_route->len < K) {
-		printf("route len < K : %d\n", route_len + pot_route->len);			
-
-printf("droping pot route, min prior = %d, pot pool size = %d\n", pot_route->min_priority, pot_route->summoned_pool_size);
-
-			if (pot_route->min_priority >= pot_priority_threshold || is_empty(pot_route)) {
-                                drop(pot_route);
-                                printf("pot route droped\n");
-                                *priority_threshold = pot_priority_threshold;
-                        } else {
-				add_city(pot_route, city);
-				printf("pot route increased : %d\n", pot_route->len);
-			}
-		
-		} else {
-			printf("route len == K : %d\n", route_len + pot_route->len);
-printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min_priority, pot_priority_threshold);	
-			
-			if (pot_route->min_priority >= pot_priority_threshold || is_empty(pot_route)) {
-				drop(pot_route);
-				printf("pot route droped\n");
-				*priority_threshold = pot_priority_threshold;
-			} 
-			return route_len;
-		}
+	printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min_priority, pot_priority_threshold);
+				
+	int drop_needed = pot_route->min_priority >= pot_priority_threshold || is_empty(pot_route);	
+	if (drop_needed) {
+		*curr_route_len = *curr_route_len + pot_route->len;
+		drop(pot_route);
+		printf("pot route droped\n");
+		*priority_threshold = pot_priority_threshold;
 	}
 	
 	//find all adj
-	int adj_i = find_next_adj(ids_sorted_by_c, N, C, city->id, visited);
-	if (adj_i == -1 && (*visited)[city->next_id] == 0) {
-		adj_i = city->next_id;
+	int adj_id = find_vacant_adjacent_id(ids_sorted_by_c, N, city->id, C, *visited);
+	if (adj_id == -1 && (*visited)[city->next_id] == 0) {
+		adj_id = city->next_id;
 	}
 
-	while (adj_i != -1) {
+	while (adj_id != -1) {
 
-		printf("ADJ : %d\n", adj_i);	
+		printf("ADJ : %d\n", adj_id);	
 		int sub_route_len = check_routeness(
 			ids_sorted_by_c, 
 			ids_sorted_by_d, 
@@ -454,44 +534,53 @@ printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min
         		pot_route,
 			N, 
 			K, 
-			cities_by_id[adj_i], 
+			cities_by_id[adj_id], 
 			min_priority, 
 			D, 
 			C, 
-			visited);
-		
-		if (sub_route_len == -1 && route_len + pot_route->len == K) { 
+			visited,
+			curr_route_len);
 
-			//TODO : unsummon. Use binomial heaps instead                
-
-printf("UNSUMMON : pool size = %d, pot len = %d, route len = %d\n", *priority_pool_size, pot_route->len, route_len);		
-			remove_city(pot_route);		
-
-			City *unsummoned = extract_last_summoned(pot_route);
-			printf("summoned pool size : %d\n", pot_route->summoned_pool_size);
-
-			(*priority_pool)[*priority_pool_size] = unsummoned->id;
-			unsummoned->pos_in_heap = *priority_pool_size;
-			shift_up(*priority_pool, unsummoned->pos_in_heap, D, 1);
-			(*priority_pool_size)++;
-
-			(*d_pool)[unsummoned->d_pool_index] = 0;
-			unsummoned->d_pool_index = -1;
-
-		} 
 		if (sub_route_len > 0) {
-			route_len += sub_route_len;
-		}
+                        route_len += sub_route_len;
+                }
 
-		adj_i = find_next_adj(ids_sorted_by_c, N, C, city->id, visited);
-		if (adj_i == -1 && (*visited)[city->next_id] == 0) {
-                	adj_i = city->next_id;
+		if (sub_route_len == -1) {            
+			
+			int worst_city_id = find_shortest_branch_id(ids_sorted_by_d, K, D[adj_id], D);
+			City *worst_city_in_route = cities_by_id[worst_city_id];
+			City *adj_city = cities_by_id[adj_id];
+			
+			int need_to_replace = (worst_city_in_route->accum_route_len < adj_city->accum_route_len) || (worst_city_in_route->accum_route_len == adj_city->accum_route_len && worst_city_in_route->accum_max_priority < adj_city->accum_max_priority); 
+
+			if (need_to_replace) {
+				printf("swap worst city in route %d and adj city %d\n", worst_city_in_route->id, adj_city->id);
+				swap_complete (ids_sorted_by_d, worst_city_in_route->ids_sorted_by_d_index, adj_city->ids_sorted_by_d_index);
+
+				City *unsummoned = worst_city_in_route;
+				printf("unsummon worst_city_in_route : %d\n", unsummoned->id);
+				
+                       		(*priority_pool)[*priority_pool_size] = unsummoned->id;
+                        	unsummoned->pos_in_heap = *priority_pool_size;
+                        	shift_up(*priority_pool, unsummoned->pos_in_heap, D, 1);
+                        	(*priority_pool_size)++;
+
+				printf("unvisit adj city : %d\n", adj_city->id);
+				(*visited)[adj_city->id] = 0;
+				(*d_pool)[adj_city->d_pool_index] = 0;
+				if (contains(pot_route, adj_city)) {
+					remove_city(pot_route, adj_city);
+				}
+			}	
+		} 
+
+		adj_id = find_vacant_adjacent_id(ids_sorted_by_c, N, city->id, C, *visited);
+		if (adj_id == -1 && (*visited)[city->next_id] == 0) {
+                	adj_id = city->next_id;
         	}
 	}
-
 	return route_len;
 }
-*/
 
 int solution(int K, int C[], int D[], int N) {
 
@@ -505,8 +594,9 @@ int solution(int K, int C[], int D[], int N) {
 		city->next_id = C[i];
 		city->pos_in_heap = -1;
 		city->priority = D[i];
-		city->checked = 0;
 		city->d_pool_index = -1;
+		city->ids_sorted_by_d_index = -1;
+		city->accumed = 0;
 		city->accum_route_len = 0;
 		city->accum_min_priority = -1;
 		city->accum_max_priority = -1;
@@ -518,10 +608,11 @@ int solution(int K, int C[], int D[], int N) {
 	
 	//Build heap by D
         int *ids_sorted_by_d = heap_sort(A_D, N, D, MIN_HEAP, 1);
+	for (int i=0; i<N; i++) {
+		cities_by_id[ids_sorted_by_d[i]]->ids_sorted_by_d_index = i;
+	}
         //Sort cities by C to find element in log(n) time
         int *ids_sorted_by_c = heap_sort(A_C, N, C, MAX_HEAP, 0);
-
-	int max_route_len = 0;
 
 	int min_priority = D[ids_sorted_by_d[K-1]];
 	int max_priority = D[ids_sorted_by_d[0]];	
@@ -530,77 +621,68 @@ int solution(int K, int C[], int D[], int N) {
 	int size = 0;
 	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
 	
-	printf("\n");
-	for (int i=0; i<size; i++) printf("%d ", leafs[i]);
-	printf("\n");
-
 	accum_knots (leafs, size, min_priority);
-
 /*
+	printf("\n");
 	for (int i=0; i<N; i++) {
-		City *city = cities_by_id[ids_sorted_by_d[i]];
-		if (city->priority < max_priority) {
-			break;
-		}
-		if (city->checked == 1) {
-			continue;
-		}
-
-        	int *B = (int *)calloc(N, sizeof(int));		
-		int *d_pool = (int *)calloc(K, sizeof(int));
-		int *priority_pool = (int *)calloc(K, sizeof(int));		
-		int priority_pool_size = K;
-		int priority_threshold = max_priority;
-
-		for (int i=0; i<K; i++) {
-			priority_pool[i] = ids_sorted_by_d[i];
-		}		
-
-		Pot_Route *pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
-		pot_route->len = 0;
-		pot_route->min_priority = -1;
-		pot_route->summoned_pool = (int *)calloc(K, sizeof(int));
-		pot_route->summoned_pool_size = 0;	
-
-		int route_len = check_routeness(
-			ids_sorted_by_c, 
-			ids_sorted_by_d, 
-			&d_pool, 
-			&priority_pool,
-			&priority_pool_size,
-			&priority_threshold,
-			pot_route,
-			N, 
-			K, 
-			city, 
-			min_priority, 
-			D, 
-			C, 
-			&B);
-		
-		city->checked = 1;			
-
-		printf("route len uncropped: %d\n", route_len);
-		if (!is_empty(pot_route)) {
-			route_len -= pot_route->len;
-		}
-		printf("route len cropped: %d\n", route_len);
-
-		if (route_len > max_route_len) {
-			max_route_len = route_len;
-		}
-
-		printf("\nmax route len : %d\nroute len : %d\n", max_route_len, route_len);		
-		printf("--------------------------------------------\n\n");	
-
-		free(B);
-		free(d_pool);
-		free(pot_route->summoned_pool);
-        	free(pot_route);
+		City *city = cities_by_id[i];
+		printf("\n");
+                printf("city %d:\n", city->id);
+                printf("\taccum len : %d\n", city->accum_route_len);
+                printf("\taccum max : %d\n", city->accum_max_priority);
+                printf("\taccum min : %d\n", city->accum_min_priority);
+                printf("\n");
 	}
-*/	
-	if (max_route_len > K) {
-		max_route_len = K;
+	printf("\n");
+*/
+
+	City *city = cities_by_id[ids_sorted_by_d[0]];
+
+        int *B = (int *)calloc(N, sizeof(int));		
+	int *d_pool = (int *)calloc(K, sizeof(int));
+	int *priority_pool = (int *)calloc(K, sizeof(int));		
+	int priority_pool_size = K;
+	int priority_threshold = max_priority;
+
+	for (int i=0; i<K; i++) {
+		priority_pool[i] = ids_sorted_by_d[i];
+	}		
+
+	Pot_Route *pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
+	pot_route->len = 0;
+	pot_route->min_priority = -1;
+	pot_route->cities = (int *)calloc(N, sizeof(int));
+	pot_route->cities_size = N;	
+	int curr_route_len = 0;
+
+	int route_len = check_routeness(
+		ids_sorted_by_c, 
+		ids_sorted_by_d, 
+		&d_pool, 
+		&priority_pool,
+		&priority_pool_size,
+		&priority_threshold,
+		pot_route,
+		N, 
+		K, 
+		city, 
+		min_priority, 
+		D, 
+		C, 
+		&B,
+		&curr_route_len);			
+
+	if (!is_empty(pot_route)) {
+		route_len -= pot_route->len;
+	}		
+
+	free(B);
+	free(d_pool);
+	free(pot_route->cities);
+        free(pot_route);
+
+	if (route_len > K) {
+		route_len = K;
 	}	
 
 	for (int i=0; i<N; i++) free(cities_by_id[i]);
@@ -609,7 +691,7 @@ int solution(int K, int C[], int D[], int N) {
 	free(A_C);
         free(A_D);	
 
-	return max_route_len;
+	return route_len;
 }
 
 int main () {
@@ -644,10 +726,10 @@ int main () {
 /*line */
 /*
 	int N = 20;
-	int K = 17;
+	int K = 5;
 	
 	int C[20] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19};
-	int D[20] = {1, 9, 1, 9, 1, 9, 1, 9, 1, 1, 9, 1, 1, 9, 1, 1, 1, 1, 9, 1};
+	int D[20] = {1, 1, 1, 9, 9, 1, 1, 1, 1, 1, 1, 1, 1, 9, 9, 9, 1, 1, 1, 1};
 */
 
 /* non conseq levels*/
