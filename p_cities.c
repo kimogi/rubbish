@@ -416,10 +416,6 @@ void swap_complete (int *ids_sorted_by_d, int i_1, int i_2) {
 	int buff = city_1->d_pool_index;
         city_1->d_pool_index = city_2->d_pool_index;
         city_2->d_pool_index = buff;
-
-      //  buff = city_1->pos_in_heap;
-      //  city_1->pos_in_heap = city_2->pos_in_heap;
-       // city_2->pos_in_heap = buff;
 }
 
 int check_routeness (
@@ -463,12 +459,6 @@ int check_routeness (
 
 	int sum_route_len = *curr_route_len + pot_route->len;
 	printf("sum route len : %d + %d\n", *curr_route_len, pot_route->len);
-
-       // if (sum_route_len > K) {
-       //         (*visited)[city->id] = 1;
-        //        printf("route lne exceeded\n");
-        //        return 0;
-       // }
 
 	(*visited)[city->id] = 1;
 	route_len++;
@@ -622,19 +612,6 @@ int solution(int K, int C[], int D[], int N) {
 	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
 	
 	accum_knots (leafs, size, min_priority);
-/*
-	printf("\n");
-	for (int i=0; i<N; i++) {
-		City *city = cities_by_id[i];
-		printf("\n");
-                printf("city %d:\n", city->id);
-                printf("\taccum len : %d\n", city->accum_route_len);
-                printf("\taccum max : %d\n", city->accum_max_priority);
-                printf("\taccum min : %d\n", city->accum_min_priority);
-                printf("\n");
-	}
-	printf("\n");
-*/
 
 	City *city = cities_by_id[ids_sorted_by_d[0]];
 
