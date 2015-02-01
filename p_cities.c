@@ -61,7 +61,7 @@ void remove_city(Pot_Route *pot_route, City *city) {
 }
 
 int is_empty(Pot_Route *pot_route) {
-	int result = pot_route->len ==0 && pot_route->min_priority == -1 ? 1 : 0;
+	int result = pot_route->len == 0 && pot_route->min_priority == -1 ? 1 : 0;
 	return result;
 }
 
@@ -417,9 +417,9 @@ void swap_complete (int *ids_sorted_by_d, int i_1, int i_2) {
         city_1->d_pool_index = city_2->d_pool_index;
         city_2->d_pool_index = buff;
 
-        buff = city_1->pos_in_heap;
-        city_1->pos_in_heap = city_2->pos_in_heap;
-        city_2->pos_in_heap = buff;
+      //  buff = city_1->pos_in_heap;
+      //  city_1->pos_in_heap = city_2->pos_in_heap;
+       // city_2->pos_in_heap = buff;
 }
 
 int check_routeness (
@@ -464,11 +464,11 @@ int check_routeness (
 	int sum_route_len = *curr_route_len + pot_route->len;
 	printf("sum route len : %d + %d\n", *curr_route_len, pot_route->len);
 
-        if (sum_route_len > K) {
-                (*visited)[city->id] = 1;
-                printf("route lne exceeded\n");
-                return 0;
-        }
+       // if (sum_route_len > K) {
+       //         (*visited)[city->id] = 1;
+        //        printf("route lne exceeded\n");
+        //        return 0;
+       // }
 
 	(*visited)[city->id] = 1;
 	route_len++;
@@ -493,7 +493,7 @@ int check_routeness (
 	*priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
 
         int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
-	printf("pot priority threshold : %d, pool size : %d\n", pot_priority_threshold, *priority_pool_size);	
+	printf("pot priority threshold : %d, pool size : %d, root : %d\n", pot_priority_threshold, *priority_pool_size, (*priority_pool)[0]);	
 	for(int i=0; i<N; i++) printf("%d ", ids_sorted_by_d[i]);
         printf("\n");
 	for(int i=0; i<N; i++) printf("%d ", D[ids_sorted_by_d[i]]);
@@ -508,7 +508,7 @@ int check_routeness (
 	printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min_priority, pot_priority_threshold);
 				
 	int drop_needed = pot_route->min_priority >= pot_priority_threshold || is_empty(pot_route);	
-	if (drop_needed) {
+	if (drop_needed && sum_route_len <= K) {
 		*curr_route_len = *curr_route_len + pot_route->len;
 		drop(pot_route);
 		printf("pot route droped\n");
@@ -640,11 +640,11 @@ int solution(int K, int C[], int D[], int N) {
 
         int *B = (int *)calloc(N, sizeof(int));		
 	int *d_pool = (int *)calloc(K, sizeof(int));
-	int *priority_pool = (int *)calloc(K, sizeof(int));		
-	int priority_pool_size = K;
+	int *priority_pool = (int *)calloc(N, sizeof(int));		
+	int priority_pool_size = N;
 	int priority_threshold = max_priority;
 
-	for (int i=0; i<K; i++) {
+	for (int i=0; i<N; i++) {
 		priority_pool[i] = ids_sorted_by_d[i];
 	}		
 
@@ -696,8 +696,8 @@ int solution(int K, int C[], int D[], int N) {
 
 int main () {
 /*medium random tree*/
- /*
-	int N = 200;
+ 
+/*	int N = 200;
 	int K = 36;
 	
 	int C[200] = {172,13,124,53,45,94,54,135,47,148,71,188,91,31,88,1,81,108,158,66,86,57,0,123,34,10,137,119,102,152,126,19,11,178,57,176,175,167,173,41,85,153,108,58,133,43,39,99,76,83,102,195,149,69,44,81,28,14,103,18,9,185,30,131,2,71,18,78,138,148,195,149,98,147,130,158,147,176,9,124,79,35,122,138,167,114,96,38,101,133,182,3,11,161,71,183,19,45,183,126,20,35,171,9,136,168,135,84,6,147,144,8,105,16,114,55,72,66,123,124,13,26,70,51,143,45,160,53,112,5,63,98,124,24,177,123,59,15,147,136,24,110,19,196,95,92,84,162,133,185,95,31,49,24,117,158,13,64,42,199,159,183,3,15,125,73,57,16,97,172,101,21,123,125,141,152,94,16,27,45,62,36,185,59,36,0,108,47,139,36,58,173,138,176,19,180,128,165,101,114};
@@ -716,21 +716,21 @@ int main () {
 */
 
 /* similar levels*/
-
+/*
 	int N = 19;
 	int K = 18;	
 
 	int C[19] = {8,18,9,1,1,17,12,4,16,13,1,12,13,10,11,9,13,4,18};
 	int D[19] = {1,2,9,7,1,7,4,2,0,0,4,8,5,6,5,0,3,9,5};
-
+*/
 /*line */
-/*
+
 	int N = 20;
 	int K = 5;
 	
 	int C[20] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19};
 	int D[20] = {1, 1, 1, 9, 9, 1, 1, 1, 1, 1, 1, 1, 1, 9, 9, 9, 1, 1, 1, 1};
-*/
+
 
 /* non conseq levels*/
 /*
@@ -739,8 +739,8 @@ int main () {
 
 	int C[7] = {0, 0, 3, 1, 3, 4, 5};
 	int D[7] = {1000000, 14, 100, 15, 99, 0, 2};
-*/
 
+*/
 	printf("solution : %d\n", solution(K, C, D, N));
 	return 0;
 }
