@@ -383,10 +383,6 @@ int find_vacant_adjacent_id (int *ids_sorted_by_c, int size, int id, int *C, int
         return -1;
 }
 
-int is_adjacent(City *city_1, City *city_2) {
-        return city_1->next_id == city_2->id || city_2->next_id == city_1->id;
-}
-
 City *find_city_in_pool_to_replace(int *ids_sorted_by_d, int pool_size, City* city, int *D) {
 	int l_i = left_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, city->priority);
         int r_i = right_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, city->priority);
@@ -465,7 +461,6 @@ int check_routeness (
 	int **d_pool,
 	int **priority_pool,
 	int *priority_pool_size,
-	int *priority_threshold,
 	Pot_Route* pot_route, 
 	int N, 
 	int K, 
@@ -521,7 +516,6 @@ int check_routeness (
 	if (drop_needed && sum_route_len <= K) {
 		(*curr_route_len) += pot_route->len;
 		drop(pot_route);
-		*priority_threshold = pot_priority_threshold;
 		city->checked = 1;
 		sub_route_len = 0;
 	}
@@ -540,7 +534,6 @@ int check_routeness (
 			d_pool, 
 			priority_pool,
 			priority_pool_size,
-			priority_threshold,
         		pot_route,
 			N, 
 			K, 
@@ -608,9 +601,6 @@ int check_routeness (
 
                                 (*visited)[adj_city->id] = 0;
                                 (*d_pool)[adj_city->d_pool_index] = 0;
-
-				int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
-				*priority_threshold = MAX(pot_priority_threshold, *priority_threshold);
 			}	
 		} else if (ret > 0 && adj_id != city->next_id) {
 			sub_route_len += ret;
@@ -663,7 +653,9 @@ int solution(int K, int C[], int D[], int N) {
 
 	int *leafs = (int *)calloc(N, sizeof(int));
 	int size = 0;
+	//n time
 	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
+	//n log n time
 	accum_knots (leafs, size, min_priority);
 
 	//TODO to improve perfomance. remove cycle. look up.
@@ -679,7 +671,6 @@ int solution(int K, int C[], int D[], int N) {
 		int *d_pool = (int *)calloc(K, sizeof(int));
 		int *priority_pool = (int *)calloc(N, sizeof(int));		
 		int priority_pool_size = N;
-		int priority_threshold = max_priority;
 
 		for (int i=0; i<N; i++) {
 			priority_pool[i] = ids_sorted_by_d[i];
@@ -696,7 +687,6 @@ int solution(int K, int C[], int D[], int N) {
 			&d_pool, 
 			&priority_pool,
 			&priority_pool_size,
-			&priority_threshold,
 			pot_route,
 			N, 
 			K, 
