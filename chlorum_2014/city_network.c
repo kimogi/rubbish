@@ -392,7 +392,6 @@ City *find_city_in_pool_to_replace(int *ids_sorted_by_d, int pool_size, City* ci
         int r_i = right_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, city->priority);
 	
 	if (l_i == -1 || r_i == -1) {
-		printf("error: no such priority in pool\n");
                 return NULL;
         }
 
@@ -477,18 +476,15 @@ int check_routeness (
 	int **visited,
 	int *curr_route_len) {
 
-	printf("\nchecking city : %d\n", city->id);
 	int sub_route_len = 0;	
 
 	if ((*visited)[city->id] > 0) {
-		printf("%d not added : already visited\n", city->id);
 		return 0;
         }	
 
 	//TODO to improve perfomence. dont return here. drop heap and route continue checking adjs. use binomial heap to join in log time
 	if (city->priority < min_priority) {
 		(*visited)[city->id] = 1;
-		printf("not added : pripority of %d == %d, min priority = %d\n", city->id, city->priority, min_priority);
 		return 0;
 	}
 	
@@ -496,12 +492,10 @@ int check_routeness (
 
         if (vacant_pool_index == -1) {
        		(*visited)[city->id] = 1;
-        	printf("NO PLACES IN POOL\n");
        		return -1;
         }
 	
 	int sum_route_len = *curr_route_len + pot_route->len;
-	printf("sum route len : %d + %d\n", *curr_route_len, pot_route->len);
 
 	(*visited)[city->id] = 1;
 	(*d_pool)[vacant_pool_index] = 1;
@@ -510,43 +504,23 @@ int check_routeness (
 	vacant_pool_city->d_pool_index = vacant_pool_index;
 
 	if (vacant_pool_city->id != city->id) {
-		printf("swap %d and %d\n", vacant_pool_city->id, city->id);
 		swap_complete (ids_sorted_by_d, vacant_pool_city, city, *priority_pool);
 	}	
 	
 	add_city(pot_route, city);
-        printf("pot route increased : %d\n", pot_route->len);
 	sub_route_len++;	
 
-	printf("summon city : %d, position in heap : %d, pool index : %d\n", city->id, city->pos_in_heap, city->d_pool_index);
-	
 	shift_to_root(*priority_pool,*priority_pool_size, city->pos_in_heap, 1);
 	swap(*priority_pool, 0, (*priority_pool_size) - 1, 1);
 	(*priority_pool_size)--;
 	*priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
 
         int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
-	printf("pot priority threshold : %d, pool size : %d\n", pot_priority_threshold, *priority_pool_size);	
-	for(int i=0; i<N; i++) printf("%d ", ids_sorted_by_d[i]);
-	printf("\n");
-	for(int i=0; i<N; i++) printf("%d ", D[ids_sorted_by_d[i]]);
-	printf("\n");
-	for(int i=0; i<K; i++) printf("%d ", (*d_pool)[i]);
-	printf("\n");
-	for(int i=0; i<N; i++) printf("%d ", (*visited)[i]);
-	printf("\n");
-	printf("priority pool :\n");
-	heap_display(*priority_pool, *priority_pool_size);
-	printf("\n");	
-	printf("city prior : %d,  current threshold : %d\n", city->priority, *priority_threshold);
-
-	printf("droping pot route, min prior = %d, pot threshold = %d\n", pot_route->min_priority, pot_priority_threshold);
 				
 	int drop_needed = pot_route->min_priority >= pot_priority_threshold;	
 	if (drop_needed && sum_route_len <= K) {
 		(*curr_route_len) += pot_route->len;
 		drop(pot_route);
-		printf("pot route droped\n");
 		*priority_threshold = pot_priority_threshold;
 		city->checked = 1;
 		sub_route_len = 0;
@@ -560,7 +534,6 @@ int check_routeness (
 
 	while (adj_id != -1) {
 
-		printf("ADJ : %d\n", adj_id);	
 		int ret = check_routeness(
 			ids_sorted_by_c, 
 			ids_sorted_by_d, 
@@ -605,13 +578,11 @@ int check_routeness (
 
 			if (need_to_replace) {
 
-				printf("unsummon adj city : %d\n", adj_city->id);
                                 (*priority_pool)[*priority_pool_size] = adj_city->id;
                                 adj_city->pos_in_heap = *priority_pool_size;
                                 shift_up(*priority_pool, adj_city->pos_in_heap, D, 1);
                                 (*priority_pool_size)++;                                
 
-				printf("unsummon worst_city_in_route : %d\n", unsummoned->id);		
 				(*priority_pool)[*priority_pool_size] = unsummoned->id;
                                 unsummoned->pos_in_heap = *priority_pool_size;
                                 shift_up(*priority_pool, unsummoned->pos_in_heap, D, 1);
@@ -620,14 +591,12 @@ int check_routeness (
 				if (unsummoned->accum_route_len > 1) {
 					if (unsummoned->accum_max_priority_city_id != unsummoned->id) {
 						City *unsummoned_related = cities_by_id[unsummoned->accum_max_priority_city_id];
-						printf("unsummon related : %d\n", unsummoned_related->id);
                                 		(*priority_pool)[*priority_pool_size] = unsummoned_related->id;
                                 		unsummoned_related->pos_in_heap = *priority_pool_size;
                                 		shift_up(*priority_pool, unsummoned_related->pos_in_heap, D, 1);
                                 		(*priority_pool_size)++;
 					}
 					
-					printf("unsummoned pot route len : %d\n", unsummoned->route_len_behind);
 					(pot_route->len) -= unsummoned->route_len_behind;
 					
 				} else {
@@ -635,10 +604,8 @@ int check_routeness (
 				}
 				unsummoned->checked = 0;
 				
-				printf("swap worst city in route %d and adj city %d\n", unsummoned->id, adj_city->id);
 				swap_complete (ids_sorted_by_d, unsummoned, adj_city, *priority_pool);
 
-				printf("unvisit adj city :%d\n", adj_city->id);
                                 (*visited)[adj_city->id] = 0;
                                 (*d_pool)[adj_city->d_pool_index] = 0;
 
@@ -697,9 +664,7 @@ int solution(int K, int C[], int D[], int N) {
 	int *leafs = (int *)calloc(N, sizeof(int));
 	int size = 0;
 	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
-	printf("1\n");
 	accum_knots (leafs, size, min_priority);
-	printf("2\n");	
 
 	//TODO to improve perfomance. remove cycle. look up.
 	int max_route_len = 0;
@@ -709,8 +674,6 @@ int solution(int K, int C[], int D[], int N) {
 		if (city->priority < max_priority || city->checked == 1) {
 			continue;
 		}
-
-		printf("\n---------------------------------------------------\n");		
 
         	int *B = (int *)calloc(N, sizeof(int));		
 		int *d_pool = (int *)calloc(K, sizeof(int));
