@@ -293,12 +293,18 @@ void find_leafs (int **leafs, int *size, int *ids_sorted_by_c, int *C, int N) {
 	}
 }
 int max_priority_city_id (int id_1, int id_2) {
+	if (id_1 == -1 || id_2 == -1) {
+		return id_1 == -1 ? id_2 : id_1;
+	}
 	City *city_1 = cities_by_id[id_1];
 	City *city_2 = cities_by_id[id_2];
 	return city_1->priority == MAX(city_1->priority, city_2->priority) ? id_1 : id_2;
 }
 
 int min_priority_city_id (int id_1, int id_2) {
+	if (id_1 == -1 || id_2 == -1) {
+                return id_1 == -1 ? id_2 : id_1;
+        }
 	City *city_1 = cities_by_id[id_1];
         City *city_2 = cities_by_id[id_2];
         return city_1->priority == MIN(city_1->priority, city_2->priority) ? id_1 : id_2;
@@ -691,9 +697,10 @@ int solution(int K, int C[], int D[], int N) {
 	int *leafs = (int *)calloc(N, sizeof(int));
 	int size = 0;
 	find_leafs (&leafs, &size, ids_sorted_by_c, C, N);
-	
+	printf("1\n");
 	accum_knots (leafs, size, min_priority);
-	
+	printf("2\n");	
+
 	//TODO to improve perfomance. remove cycle. look up.
 	int max_route_len = 0;
 	for (int k=0; k<N; k++) {		
@@ -815,21 +822,21 @@ int main () {
 */
 
 /*first test*/
-/*
+
 	int N = 7;
 	int K = 2;
 
 	int C[7] = {1, 3, 0, 3, 2, 4, 4};
 	int D[7] = {6, 2, 7, 5, 6, 5, 2};
-*/
-/* small random tree */
 
+/* small random tree */
+/*
 	int N = 15; 
 	int K = 8;
 
 	int C[15] = {4,5,7,2,7,8,2,8,10,4,10,9,3,0,6};
 	int D[15] = {100,99,100,100,99,99,99,100,99,99,100,97,95,96,96};
-
+*/
 /*line star*/
 /*
 	int N = 60;
