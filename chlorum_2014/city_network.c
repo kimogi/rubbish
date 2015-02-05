@@ -911,7 +911,9 @@ int solution(int K, int C[], int D[], int N) {
 			C, 
 			&B,
 			&curr_route_len);			
-		
+
+		//Something wrong in logic. look last report		
+
 		while (pot_route->firm_route != NULL) {
 			Node *extracted = extract_max(&(pot_route->firm_route));
 			cities_by_id[extracted->key]->checked = 1;
