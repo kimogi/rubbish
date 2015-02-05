@@ -5,17 +5,29 @@
 #define MIN_HEAP 1
 #define INC_SORT 2
 #define DEC_SORT 3
+#define ROUTE_HEAP 4
+#define FREE_HEAP 5
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
+typedef struct node_t {
+        int key;
+        int priority;
+        struct node_t *parent;
+        struct node_t *child;
+        struct node_t *sibling;
+        int degree;
+} Node;
+
 typedef struct city_t {
-        int pos_in_heap;
         int priority;
         int id;
         int next_id;
 	int d_pool_index;
 	int ids_sorted_by_d_index;
+	Node *priority_heap_node;
+	int heap_id;
 	int checked;
 	int route_len_behind;
 	int accumed;
@@ -24,19 +36,295 @@ typedef struct city_t {
 	int accum_min_priority_city_id;
 } City;
 
-City **cities_by_id = NULL;
-
 typedef struct pot_route_t {
         int len;
         int min_priority;
+        Node *priority_heap;
 } Pot_Route;
+
+City **cities_by_id = NULL;
+Node *priority_heap;
+Pot_Route *pot_route;
+
+Node *get_max(Node *h) {
+        Node *best_node = h;
+        Node *root = h;
+        while (root != NULL) {
+                if (root->priority > best_node->priority) {
+                        best_node = root;
+                }
+                root = root->sibling;
+        }
+        return best_node;
+}
+
+void link (Node *root, Node *branch) {
+        branch->parent = root;
+        branch->sibling = root->child;
+        root->child = branch;
+        root->degree = root->degree + 1;
+
+        cities_by_id[root->key]->priority_heap_node = root;
+        cities_by_id[branch->key]->priority_heap_node = branch;
+}
+
+Node *merge (Node *h1, Node *h2) {
+	Node *h = NULL;
+	Node *cur_2 = NULL;
+	Node *cur_1 = NULL;	
+	Node *cur = NULL;
+	Node *tail = NULL;
+
+	if (h2->degree < h1->degree) {
+		h = h2;
+		cur_2 = h2->sibling;
+		cur_1 = h1;
+	} else {
+		h =  h1;
+		cur_1 = h1->sibling;
+		cur_2 = h2;
+	}
+	cur = h;
+	while (cur_1 != NULL && cur_2 != NULL) {
+		if (cur_1->degree > cur_2->degree) {
+			cur->sibling = cur_2;
+			cities_by_id[cur->key]->priority_heap_node = cur;
+			cur = cur->sibling;
+			cur_2 = cur_2->sibling;
+		} else {
+			cur->sibling = cur_1;
+			cities_by_id[cur->key]->priority_heap_node = cur;
+			cur = cur->sibling;
+			cur_1 = cur_1->sibling;
+		}
+	}
+
+	cities_by_id[cur->key]->priority_heap_node = cur;
+	if (cur_1 == NULL && cur_2->key != cur->key) {
+		tail = cur_2;
+	} else if (cur_2 == NULL && cur_1->key != cur->key){ 
+		tail = cur_1;
+	}
+	
+	while (tail != NULL) {
+		cur->sibling = tail;
+		cities_by_id[cur->key]->priority_heap_node = cur;
+		cur = cur->sibling;
+		tail = tail->sibling;
+	}
+	cities_by_id[cur->key]->priority_heap_node = cur;
+	return h;
+}
+
+void display_root_list(Node *h) {
+        Node *print = h;
+        while (print != NULL) {
+                printf("[D[%d] = %d, %d] ", print->key, print->priority, print->degree);
+                if (print->sibling != NULL) {
+                        printf(" --> ");
+                }
+                print = print->sibling;
+        }
+        printf("\n");
+}
+
+Node *unify (Node *h1, Node *h2) {
+	if (h1 == NULL) {
+		return h2;
+	}
+	if (h2 == NULL) {
+		return h1;
+	}
+
+	Node *h = merge (h1, h2);
+		
+	if (h == NULL) {
+		return h;
+	}
+	
+	Node *previous = NULL;
+	Node *current = h;
+	Node *next = current->sibling;
+	
+	while (next != NULL) {
+		int need_merge = 1;
+		if (current->degree != next->degree) {
+			need_merge = 0;
+		} else {
+			if (next->sibling != NULL && next->sibling->degree == next->degree) {
+				need_merge = 0;
+			}
+		}
+		if (need_merge) {
+			if (current->priority > next->priority) {
+				current->sibling = next->sibling;
+				link(current, next);
+
+				next = current->sibling;				
+			} else {
+				if (previous != NULL) {
+					previous->sibling = next;
+					link(next, current);
+				} else {
+					h = next;
+					link(next, current);
+				}
+
+				current = next;
+                                next = current->sibling;
+			}
+		} else {
+			previous = current;
+                        current = next;
+			next = current->sibling;
+		}
+	}
+	return h;
+}
+
+Node *create_node(int heap_id, int key) { 
+	City *city = cities_by_id[key];
+	if (city->priority_heap_node != NULL) {
+		free(city->priority_heap_node);
+	}
+
+	Node *p = (Node *)calloc(1, sizeof(Node));
+	
+	p->key = key;
+	p->priority = city->priority;
+	p->parent = NULL;
+	p->child = NULL;
+	p->sibling = NULL;
+	p->degree = 0;
+	
+	city->priority_heap_node = p;
+	city->heap_id = heap_id;
+	cities_by_id[city->id] = city;
+ 	return p; 
+}
+
+void insert (Node **h, int heap_id, int key) { 
+	Node *x = create_node(heap_id, key);  
+   	*h = unify(*h, x); 
+} 
+
+Node *extract_root (Node** h, int key) {
+	Node *prev_root = NULL;
+	Node *root = NULL; 	
+
+        Node *current = *h;
+        Node *previous = NULL;
+        while (current != NULL) {
+                if (current->key == key) {
+                        root = current;
+                        prev_root = previous;
+			break;
+                }
+                previous = current;
+                current = current->sibling;
+        }
+
+	if (root == NULL) {
+		printf("Error : No root with key %d\n", key);
+		return NULL;
+	}
+        if (prev_root != NULL) {
+                prev_root->sibling = root->sibling;
+		cities_by_id[prev_root->key]->priority_heap_node = prev_root;
+        } else {
+		*h = root->sibling;
+	}
+        root->sibling = NULL;
+
+        Node *root_children = NULL;
+
+        current = root->child;
+        Node *next = NULL;
+        while (current != NULL) {
+                current->parent = NULL;
+
+                next = current->sibling;
+
+                current->sibling = root_children;
+                cities_by_id[current->key]->priority_heap_node = current;
+                root_children = current;
+                current = next;
+        }
+
+        *h = unify(*h, root_children);
+
+	root->child = NULL;
+	cities_by_id[root->key]->priority_heap_node = root;
+	cities_by_id[root->key]->heap_id = -1;
+	return root;
+}
+
+Node *shift_to_root (int heap_id, Node *x) {
+	if (x == NULL) {
+                printf("INVALID CHOICE OF NODE TO SHIFT\n");
+                return NULL;
+        }
+	if (cities_by_id[x->key]->heap_id != heap_id) {
+		printf("Heap %d does not contain city %d, heap %d does\n", heap_id, x->key, cities_by_id[x->key]->heap_id);
+                return NULL;
+	}
+
+        Node *node = x;
+        Node *parent = x->parent;
+        while (parent != NULL) {
+                int temp = node->key;
+                node->key = parent->key;
+                parent->key = temp;
+		
+		temp = node->priority;
+		node->priority = parent->priority;
+		parent->priority = temp;
+
+                cities_by_id[node->key]->priority_heap_node = node;
+                cities_by_id[parent->key]->priority_heap_node = parent;
+
+                node = parent;
+                parent = node->parent;
+        }
+	return node;
+}
+
+Node *delete (Node **h, int heap_id, Node *x) {  
+	if (*h == NULL) { 
+      		printf("Heap is empty\n"); 
+      		return NULL;
+   	}
+	
+	Node *root = shift_to_root(heap_id, x); 
+	
+	if (root == NULL) {
+		return NULL;
+	} else {
+		return extract_root(h, root->key);
+	}
+} 
+
+void display_binom_heap (Node* h) {  
+	if (h == NULL) { 
+		printf("Heap is empty\n"); 
+		return; 
+	} 
+	printf("root nodes are:\n"); 
+	display_root_list(h);
+} 
+
+Node *build_binom_heap (int *keys, int heap_id, int size) {
+        Node *h = NULL;
+        for (int i=0; i<size; i++) insert (&h, heap_id, keys[i]);
+        return h;
+}
 
 void drop(Pot_Route *pot_route) {
 	pot_route->len = 0;
 	pot_route->min_priority = -1;
 }
 
-void add_city(Pot_Route *pot_route, City* city) {
+void add_city(Pot_Route *pot_route, City *city) {
 	(pot_route->len)++;
 	if (pot_route->min_priority == -1) {
 		pot_route->min_priority = city->priority;
@@ -45,7 +333,13 @@ void add_city(Pot_Route *pot_route, City* city) {
 	}
 }
 
-int *heapify (int *A, int i, int *V, int heap_size, int heap_mode, int store_positions) {
+void swap (int *A, int i_1, int i_2) {
+        int buff = A[i_1];
+        A[i_1] = A[i_2];
+        A[i_2] = buff;
+}
+
+int *heapify (int *A, int i, int *V, int heap_size, int heap_mode) {
 	int left = 2*i + 1;
 	int right = 2*i + 2;
 	int largest = i;
@@ -59,16 +353,8 @@ int *heapify (int *A, int i, int *V, int heap_size, int heap_mode, int store_pos
    	 		largest = right;
 		}
   		if (largest != i) {
-    			int buff = A[i];
-			A[i] = A[largest];
-			A[largest] = buff;
-			
-			if (cities_by_id != NULL && store_positions) {
-				cities_by_id[A[i]]->pos_in_heap = i;
-				cities_by_id[A[largest]]->pos_in_heap = largest;
-			}
-
-        		A = heapify(A, largest, V, heap_size, heap_mode, store_positions);
+    			swap(A, i, largest);
+        		A = heapify(A, largest, V, heap_size, heap_mode);
 		}
 	} else if (heap_mode == MIN_HEAP) {
 		if (left < heap_size && V[A[left]] < V[A[i]]) {
@@ -78,91 +364,31 @@ int *heapify (int *A, int i, int *V, int heap_size, int heap_mode, int store_pos
                         smallest = right;
                 }
                 if (smallest != i) {
-                        int buff = A[i];
-                        A[i] = A[smallest];
-                        A[smallest] = buff;
-
-			if (cities_by_id != NULL && store_positions) {
-                                cities_by_id[A[i]]->pos_in_heap = i;
-                                cities_by_id[A[smallest]]->pos_in_heap = smallest;
-                        }			
-
-                        A = heapify(A, smallest, V, heap_size, heap_mode, store_positions);
+                        swap(A, i, smallest);
+                        A = heapify(A, smallest, V, heap_size, heap_mode);
                 }
 	}	
 	return A;
 }
 
-int *build_heap(int *A, int N, int *V, int heap_mode, int store_positions) {
+int *build_heap(int *A, int N, int *V, int heap_mode) {
   	int heap_size = N;
 	for (int i = (int)(N/2); i >= 0; i--) {
-    		A = heapify(A, i, V, heap_size, heap_mode, store_positions);
+    		A = heapify(A, i, V, heap_size, heap_mode);
 	}
 	return A;
 }
 
-int *heap_sort(int *A, int N, int *V, int heap_mode, int store_positions) {
-	A = build_heap(A, N, V, heap_mode, store_positions);
+int *heap_sort(int *A, int N, int *V, int heap_mode) {
+	A = build_heap(A, N, V, heap_mode);
 	int heap_size = N;
 
 	for (int i = N-1; i >= 0; i--) {
-		int buff = A[0];
-		A[0] = A[i];
-		A[i] = buff;
-
-		if (cities_by_id != NULL && store_positions) {
-			cities_by_id[A[0]]->pos_in_heap = 0;
-			cities_by_id[A[i]]->pos_in_heap = i;
-		}	
-
+		swap(A, 0, i);
        		heap_size--;
-       		A = heapify(A, 0, V, heap_size, heap_mode, store_positions);
+       		A = heapify(A, 0, V, heap_size, heap_mode);
 	}
 	return A;
-}
-
-void shift_to_root (int *A, int size, int i, int store_positions) {
-	while (i != 0) {
-		int parent_i = (int)((i-1) - (i-1)%2)/2;
-
-        	int buff = A[i];
-		A[i] = A[parent_i];
-		A[parent_i] = buff;
-	
-		if (cities_by_id != NULL && store_positions) {
-			cities_by_id[A[i]]->pos_in_heap = i;
-			cities_by_id[A[parent_i]]->pos_in_heap = parent_i;
-		}	
-
-        	i = parent_i;
-    	}
-}
-void shift_up (int *A, int i, int *V, int store_positions) {
-	int parent_i = (int)((i-1) - (i-1)%2)/2;
-	while (i != 0 && V[A[parent_i]] < V[A[i]]) {
-    		int buff = A[i];
-		A[i] = A[parent_i];
-		A[parent_i] = buff;
-		
-		if(cities_by_id != NULL && store_positions) {
-			cities_by_id[A[i]]->pos_in_heap = i;
-                        cities_by_id[A[parent_i]]->pos_in_heap = parent_i;
-		}
-      		
-		i = parent_i;
-		parent_i = (int)((i-1) - (i-1)%2)/2;
-	}
-}
-
-void swap (int *A, int i_1, int i_2, int store_positions) {
-	int buff = A[i_1];
-	A[i_1] = A[i_2];
-	A[i_2] = buff;
-
-	if (cities_by_id != NULL && store_positions) {
-		cities_by_id[A[i_1]]->pos_in_heap = i_1;
-		cities_by_id[A[i_2]]->pos_in_heap = i_2;
-	}
 }
 
 int left_b_search(int *A, int sort_mode, int first, int last, int *V, int key) {
@@ -357,7 +583,6 @@ int find_vacant_index_in_pool (int *ids_sorted_by_d, int pool_size, int id, int 
 	int r_i = right_b_search (ids_sorted_by_d, DEC_SORT, 0, pool_size - 1, D, D[id]);
 
 	if (l_i == -1 || r_i == -1) {
-		printf("error: no such priority in pool\n");
 		return -2;
 	}
 	for (int i = l_i; i <= r_i; i++) {
@@ -407,8 +632,8 @@ City *find_city_in_pool_to_replace(int *ids_sorted_by_d, int pool_size, City* ci
 	return shortest_brunch_city;
 }
 
-void swap_complete (int *ids_sorted_by_d, City *city_1, City *city_2, int *priority_pool) {
-	swap (ids_sorted_by_d, city_1->ids_sorted_by_d_index, city_2->ids_sorted_by_d_index, 0);
+void swap_complete (int *ids_sorted_by_d, City *city_1, City *city_2) {
+	swap(ids_sorted_by_d, city_1->ids_sorted_by_d_index, city_2->ids_sorted_by_d_index);
 
 	int buff = city_1->ids_sorted_by_d_index;
 	city_1->ids_sorted_by_d_index = city_2->ids_sorted_by_d_index;
@@ -419,49 +644,10 @@ void swap_complete (int *ids_sorted_by_d, City *city_1, City *city_2, int *prior
         city_2->d_pool_index = buff;
 }
 
-void heap_levels (int *A, int size, int i, int **out_buff) {
-	if (i == 0) {
-		(*out_buff)[i] = 0;
-	} else {
-		int parent_i = (int)((i-1) - (i-1)%2)/2;
-		(*out_buff)[i] = (*out_buff)[parent_i] + 1;
-	}
-
-	int left = 2*i + 1;
-        if (left < size) {
-		heap_levels (A, size, left, out_buff);
-	}
-	int right = 2*i + 2;
-	if (right < size) {
-		heap_levels (A, size, right, out_buff);
-	}
-}
-
-void heap_display (int *A, int size) {
-	int *levels = (int *)calloc(size, sizeof(int));
-	heap_levels(A, size, 0, &levels);
-	
-	int curr_level = levels[0];
-	for (int i=0; i<size; i++) {
-		City *leaf = cities_by_id[A[i]];
-		if (curr_level < levels[i]) {
-			printf("\n");
-			curr_level = levels[i];
-		}
-		printf("[%d, %d]", leaf->id, leaf->priority);
-	}
-
-	printf("\n");
-	free(levels);
-}
-
 int check_routeness (
 	int *ids_sorted_by_c,
 	int *ids_sorted_by_d, 
 	int **d_pool,
-	int **priority_pool,
-	int *priority_pool_size,
-	Pot_Route* pot_route, 
 	int N, 
 	int K, 
 	City *city, 
@@ -487,6 +673,7 @@ int check_routeness (
 
         if (vacant_pool_index == -1) {
        		(*visited)[city->id] = 1;
+		city->d_pool_index == -1;
        		return -1;
         }
 	
@@ -499,23 +686,28 @@ int check_routeness (
 	vacant_pool_city->d_pool_index = vacant_pool_index;
 
 	if (vacant_pool_city->id != city->id) {
-		swap_complete (ids_sorted_by_d, vacant_pool_city, city, *priority_pool);
+		swap_complete (ids_sorted_by_d, vacant_pool_city, city);
 	}	
 	
-	add_city(pot_route, city);
-	sub_route_len++;	
+	//First delete then add
+	Node *deleted = delete(&priority_heap, FREE_HEAP, city->priority_heap_node);
+	
+	if (deleted != NULL) {	
+		insert(&(pot_route->priority_heap), ROUTE_HEAP, deleted->key);
+	} else {
+		printf("ERROR!!!!! Free heap does not contain %d %d\n", city->priority_heap_node->key, city->id);
+	}
 
-	shift_to_root(*priority_pool,*priority_pool_size, city->pos_in_heap, 1);
-	swap(*priority_pool, 0, (*priority_pool_size) - 1, 1);
-	(*priority_pool_size)--;
-	*priority_pool = heapify(*priority_pool, 0, D, *priority_pool_size, MAX_HEAP, 1);
+	add_city (pot_route, city);
+	sub_route_len++;
+	
+        int pot_priority_threshold = priority_heap != NULL ? get_max(priority_heap)->priority : 0;
 
-        int pot_priority_threshold = *priority_pool_size > 0 ? cities_by_id[(*priority_pool)[0]]->priority : 0;
-				
 	int drop_needed = pot_route->min_priority >= pot_priority_threshold;	
 	if (drop_needed && sum_route_len <= K) {
 		(*curr_route_len) += pot_route->len;
 		drop(pot_route);
+		//remove cheking later
 		city->checked = 1;
 		sub_route_len = 0;
 	}
@@ -527,17 +719,16 @@ int check_routeness (
 	}
 
 	while (adj_id != -1) {
+		
+		City *adj_city = cities_by_id[adj_id];		
 
 		int ret = check_routeness(
 			ids_sorted_by_c, 
 			ids_sorted_by_d, 
 			d_pool, 
-			priority_pool,
-			priority_pool_size,
-        		pot_route,
 			N, 
 			K, 
-			cities_by_id[adj_id], 
+			adj_city, 
 			min_priority, 
 			D, 
 			C, 
@@ -545,14 +736,11 @@ int check_routeness (
 			curr_route_len);
 
 		if (ret == -1) {            
-			
-			City *adj_city = cities_by_id[adj_id];
 			City *unsummoned = find_city_in_pool_to_replace(ids_sorted_by_d, K, adj_city, D);
 					
-			int can_be_replaced = unsummoned != NULL;					
 			int worth_to_replace = 0;
 			
-			if (can_be_replaced) {
+			if (unsummoned != NULL) {
 				
 				if (unsummoned->accum_route_len < adj_city->accum_route_len) {
 					worth_to_replace = 1;
@@ -567,37 +755,40 @@ int check_routeness (
 				}
 			}
 			
-			int need_to_replace = can_be_replaced && worth_to_replace && *curr_route_len < K;
+			int need_to_replace = worth_to_replace && *curr_route_len < K;
 
 			if (need_to_replace) {
-
-                                (*priority_pool)[*priority_pool_size] = adj_city->id;
-                                adj_city->pos_in_heap = *priority_pool_size;
-                                shift_up(*priority_pool, adj_city->pos_in_heap, D, 1);
-                                (*priority_pool_size)++;                                
-
-				(*priority_pool)[*priority_pool_size] = unsummoned->id;
-                                unsummoned->pos_in_heap = *priority_pool_size;
-                                shift_up(*priority_pool, unsummoned->pos_in_heap, D, 1);
-                                (*priority_pool_size)++;
+				
+				//First delete then insert
+				Node *deleted = delete(&(pot_route->priority_heap), ROUTE_HEAP, unsummoned->priority_heap_node);
+                            	
+				if (deleted != NULL) {
+					insert(&priority_heap, FREE_HEAP, deleted->key);
+				} else {
+				printf("ERROR!!!Route heap does not contain %d %d\n", unsummoned->priority_heap_node->key, unsummoned->id);
+				}				
 
 				if (unsummoned->accum_route_len > 1) {
 					if (unsummoned->accum_max_priority_city_id != unsummoned->id) {
-						City *unsummoned_related = cities_by_id[unsummoned->accum_max_priority_city_id];
-                                		(*priority_pool)[*priority_pool_size] = unsummoned_related->id;
-                                		unsummoned_related->pos_in_heap = *priority_pool_size;
-                                		shift_up(*priority_pool, unsummoned_related->pos_in_heap, D, 1);
-                                		(*priority_pool_size)++;
+						City *max_in_branch = cities_by_id[unsummoned->accum_max_priority_city_id];
+						
+						//First delete then insert
+						Node *deleted = NULL;
+						deleted = delete(&(pot_route->priority_heap), ROUTE_HEAP, max_in_branch->priority_heap_node);
+                                		if (deleted != NULL) {
+							insert(&priority_heap, FREE_HEAP, deleted->key);
+						}
+						(*visited)[deleted->key] = 1;
 					}
-					
 					(pot_route->len) -= unsummoned->route_len_behind;
 					
 				} else {
 					(pot_route->len)--;
 				}
+				//TODO remove
 				unsummoned->checked = 0;
 				
-				swap_complete (ids_sorted_by_d, unsummoned, adj_city, *priority_pool);
+				swap_complete (ids_sorted_by_d, unsummoned, adj_city);
 
                                 (*visited)[adj_city->id] = 0;
                                 (*d_pool)[adj_city->d_pool_index] = 0;
@@ -615,6 +806,14 @@ int check_routeness (
 	return sub_route_len;
 }
 
+void free_binom_heap(Node *h) {
+	if (h->sibling != NULL) {
+		free_binom_heap(h->sibling);
+	} else if (h->child != NULL) {
+		free_binom_heap(h->child);
+	}
+}
+
 int solution(int K, int C[], int D[], int N) {
 
 	int *A_D = (int *)calloc(N, sizeof(int));
@@ -625,10 +824,11 @@ int solution(int K, int C[], int D[], int N) {
 		City *city = (City *)calloc(1, sizeof(City));
 		city->id = i;
 		city->next_id = C[i];
-		city->pos_in_heap = -1;
 		city->priority = D[i];
 		city->d_pool_index = -1;
 		city->ids_sorted_by_d_index = -1;
+		city->priority_heap_node = NULL;
+		city->heap_id = -1;
 		city->checked = 0;
 		city->accumed = 0;
 		city->accum_route_len = 0;
@@ -640,13 +840,13 @@ int solution(int K, int C[], int D[], int N) {
                 A_C[i] = i;
 	}
 	
-	//Build heap by D
-        int *ids_sorted_by_d = heap_sort(A_D, N, D, MIN_HEAP, 1);
+	//sort cities in order decresing by D
+        int *ids_sorted_by_d = heap_sort(A_D, N, D, MIN_HEAP);
 	for (int i=0; i<N; i++) {
 		cities_by_id[ids_sorted_by_d[i]]->ids_sorted_by_d_index = i;
 	}
-        //Sort cities by C to find element in log(n) time
-        int *ids_sorted_by_c = heap_sort(A_C, N, C, MAX_HEAP, 0);
+        //Sort cities in order increasing by C TODO: make decresing to save code
+        int *ids_sorted_by_c = heap_sort(A_C, N, C, MAX_HEAP);
 
 	int min_priority = D[ids_sorted_by_d[K-1]];
 	int max_priority = D[ids_sorted_by_d[0]];	
@@ -669,25 +869,19 @@ int solution(int K, int C[], int D[], int N) {
 
         	int *B = (int *)calloc(N, sizeof(int));		
 		int *d_pool = (int *)calloc(K, sizeof(int));
-		int *priority_pool = (int *)calloc(N, sizeof(int));		
-		int priority_pool_size = N;
+		priority_heap = build_binom_heap(ids_sorted_by_d, FREE_HEAP, N);		
 
-		for (int i=0; i<N; i++) {
-			priority_pool[i] = ids_sorted_by_d[i];
-		}		
-
-		Pot_Route *pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
+		pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
 		pot_route->len = 0;
 		pot_route->min_priority = -1;
+		pot_route->priority_heap = NULL;
+		
 		int curr_route_len = 0;
 
 		check_routeness(
 			ids_sorted_by_c, 
 			ids_sorted_by_d, 
 			&d_pool, 
-			&priority_pool,
-			&priority_pool_size,
-			pot_route,
 			N, 
 			K, 
 			city, 
@@ -696,10 +890,15 @@ int solution(int K, int C[], int D[], int N) {
 			C, 
 			&B,
 			&curr_route_len);			
+		
+		city->checked = 1;
 
 		free(B);
 		free(d_pool);
+		free(pot_route->priority_heap);
         	free(pot_route);
+		free(priority_heap);
+		for (int i=0; i<N; i++) cities_by_id[i]->priority_heap_node = NULL;
 		
 		if (curr_route_len > max_route_len) {
 			max_route_len = curr_route_len;
