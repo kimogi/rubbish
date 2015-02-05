@@ -897,8 +897,6 @@ int solution(int K, int C[], int D[], int N) {
 		priority_heap = unify(priority_heap, pot_route->priority_heap);
 		pot_route->priority_heap = NULL;
 		
-		//WRONG ANSWER in Linestar if reuse B		
-
 		int curr_route_len = 0;
 
 		check_routeness(
