@@ -27,7 +27,6 @@ typedef struct city_t {
 	int d_pool_index;
 	int ids_sorted_by_d_index;
 	Node *priority_heap_node;
-	int heap_id;
 	int checked;
 	int route_len_behind;
 	int accumed;
@@ -182,7 +181,7 @@ Node *unify (Node *h1, Node *h2) {
 	return h;
 }
 
-Node *create_node(int heap_id, int key) { 
+Node *create_node(int key) { 
 	City *city = cities_by_id[key];
 	if (city->priority_heap_node != NULL) {
 		free(city->priority_heap_node);
@@ -198,13 +197,12 @@ Node *create_node(int heap_id, int key) {
 	p->degree = 0;
 	
 	city->priority_heap_node = p;
-	city->heap_id = heap_id;
 	cities_by_id[city->id] = city;
  	return p; 
 }
 
-void insert (Node **h, int heap_id, int key) { 
-	Node *x = create_node(heap_id, key);  
+void insert (Node **h, int key) { 
+	Node *x = create_node(key);  
    	*h = unify(*h, x); 
 } 
 
@@ -255,7 +253,6 @@ Node *extract_root (Node** h, int key) {
 
 	root->child = NULL;
 	cities_by_id[root->key]->priority_heap_node = root;
-	cities_by_id[root->key]->heap_id = -1;
 	return root;
 }
 
@@ -264,10 +261,6 @@ Node *shift_to_root (int heap_id, Node *x) {
                 printf("INVALID CHOICE OF NODE TO SHIFT\n");
                 return NULL;
         }
-	if (cities_by_id[x->key]->heap_id != heap_id) {
-		printf("Heap %d does not contain city %d, heap %d does\n", heap_id, x->key, cities_by_id[x->key]->heap_id);
-                return NULL;
-	}
 
         Node *node = x;
         Node *parent = x->parent;
@@ -313,9 +306,9 @@ void display_binom_heap (Node* h) {
 	display_root_list(h);
 } 
 
-Node *build_binom_heap (int *keys, int heap_id, int size) {
+Node *build_binom_heap (int *keys, int size) {
         Node *h = NULL;
-        for (int i=0; i<size; i++) insert (&h, heap_id, keys[i]);
+        for (int i=0; i<size; i++) insert (&h, keys[i]);
         return h;
 }
 
@@ -663,19 +656,18 @@ int check_routeness (
 		return 0;
         }	
 
-	//TODO to improve perfomence. dont return here. drop heap and route continue checking adjs. use binomial heap to join in log time
 	if (city->priority < min_priority) {
 		(*visited)[city->id] = 1;
 		return 0;
 	}
-	
+
 	int vacant_pool_index = find_vacant_index_in_pool(ids_sorted_by_d, K, city->id, D, *d_pool);
 
-        if (vacant_pool_index == -1) {
-       		(*visited)[city->id] = 1;
+	if (vacant_pool_index == -1) {
+		(*visited)[city->id] = 1;
 		city->d_pool_index == -1;
-       		return -1;
-        }
+		return -1;
+	}
 	
 	int sum_route_len = *curr_route_len + pot_route->len;
 
@@ -691,23 +683,17 @@ int check_routeness (
 	
 	//First delete then add
 	Node *deleted = delete(&priority_heap, FREE_HEAP, city->priority_heap_node);
-	
-	if (deleted != NULL) {	
-		insert(&(pot_route->priority_heap), ROUTE_HEAP, deleted->key);
-	} else {
-		printf("ERROR!!!!! Free heap does not contain %d %d\n", city->priority_heap_node->key, city->id);
-	}
+	insert(&(pot_route->priority_heap), deleted->key);
 
 	add_city (pot_route, city);
 	sub_route_len++;
 	
-        int pot_priority_threshold = priority_heap != NULL ? get_max(priority_heap)->priority : 0;
+       	int pot_priority_threshold = priority_heap != NULL ? get_max(priority_heap)->priority : 0;
 
 	int drop_needed = pot_route->min_priority >= pot_priority_threshold;	
 	if (drop_needed && sum_route_len <= K) {
 		(*curr_route_len) += pot_route->len;
 		drop(pot_route);
-		//remove cheking later
 		city->checked = 1;
 		sub_route_len = 0;
 	}
@@ -719,7 +705,6 @@ int check_routeness (
 	}
 
 	while (adj_id != -1) {
-		
 		City *adj_city = cities_by_id[adj_id];		
 
 		int ret = check_routeness(
@@ -761,12 +746,7 @@ int check_routeness (
 				
 				//First delete then insert
 				Node *deleted = delete(&(pot_route->priority_heap), ROUTE_HEAP, unsummoned->priority_heap_node);
-                            	
-				if (deleted != NULL) {
-					insert(&priority_heap, FREE_HEAP, deleted->key);
-				} else {
-				printf("ERROR!!!Route heap does not contain %d %d\n", unsummoned->priority_heap_node->key, unsummoned->id);
-				}				
+				insert(&priority_heap, deleted->key);
 
 				if (unsummoned->accum_route_len > 1) {
 					if (unsummoned->accum_max_priority_city_id != unsummoned->id) {
@@ -775,9 +755,7 @@ int check_routeness (
 						//First delete then insert
 						Node *deleted = NULL;
 						deleted = delete(&(pot_route->priority_heap), ROUTE_HEAP, max_in_branch->priority_heap_node);
-                                		if (deleted != NULL) {
-							insert(&priority_heap, FREE_HEAP, deleted->key);
-						}
+						insert(&priority_heap, deleted->key);
 						(*visited)[deleted->key] = 1;
 					}
 					(pot_route->len) -= unsummoned->route_len_behind;
@@ -785,7 +763,6 @@ int check_routeness (
 				} else {
 					(pot_route->len)--;
 				}
-				//TODO remove
 				unsummoned->checked = 0;
 				
 				swap_complete (ids_sorted_by_d, unsummoned, adj_city);
@@ -828,7 +805,6 @@ int solution(int K, int C[], int D[], int N) {
 		city->d_pool_index = -1;
 		city->ids_sorted_by_d_index = -1;
 		city->priority_heap_node = NULL;
-		city->heap_id = -1;
 		city->checked = 0;
 		city->accumed = 0;
 		city->accum_route_len = 0;
@@ -845,11 +821,16 @@ int solution(int K, int C[], int D[], int N) {
 	for (int i=0; i<N; i++) {
 		cities_by_id[ids_sorted_by_d[i]]->ids_sorted_by_d_index = i;
 	}
-        //Sort cities in order increasing by C TODO: make decresing to save code
+        //Sort cities in order increasing by C
         int *ids_sorted_by_c = heap_sort(A_C, N, C, MAX_HEAP);
 
 	int min_priority = D[ids_sorted_by_d[K-1]];
 	int max_priority = D[ids_sorted_by_d[0]];	
+
+	pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
+	pot_route->priority_heap = NULL;
+	
+	priority_heap = build_binom_heap(ids_sorted_by_d, N);	
 
 	int *leafs = (int *)calloc(N, sizeof(int));
 	int size = 0;
@@ -858,7 +839,6 @@ int solution(int K, int C[], int D[], int N) {
 	//n log n time
 	accum_knots (leafs, size, min_priority);
 
-	//TODO to improve perfomance. remove cycle. look up.
 	int max_route_len = 0;
 	for (int k=0; k<N; k++) {		
 
@@ -869,13 +849,11 @@ int solution(int K, int C[], int D[], int N) {
 
         	int *B = (int *)calloc(N, sizeof(int));		
 		int *d_pool = (int *)calloc(K, sizeof(int));
-		priority_heap = build_binom_heap(ids_sorted_by_d, FREE_HEAP, N);		
-
-		pot_route = (Pot_Route *)calloc(1, sizeof(Pot_Route));
 		pot_route->len = 0;
-		pot_route->min_priority = -1;
+                pot_route->min_priority = -1;
+		priority_heap = unify(priority_heap, pot_route->priority_heap);		
 		pot_route->priority_heap = NULL;
-		
+
 		int curr_route_len = 0;
 
 		check_routeness(
@@ -895,10 +873,6 @@ int solution(int K, int C[], int D[], int N) {
 
 		free(B);
 		free(d_pool);
-		free(pot_route->priority_heap);
-        	free(pot_route);
-		free(priority_heap);
-		for (int i=0; i<N; i++) cities_by_id[i]->priority_heap_node = NULL;
 		
 		if (curr_route_len > max_route_len) {
 			max_route_len = curr_route_len;
@@ -910,6 +884,9 @@ int solution(int K, int C[], int D[], int N) {
 	}	
 
 	for (int i=0; i<N; i++) free(cities_by_id[i]);
+	free(pot_route->priority_heap);
+	free(pot_route);
+	free(priority_heap);
 	free(cities_by_id);
 	free(leafs);
 	free(A_C);
