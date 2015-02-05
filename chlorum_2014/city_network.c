@@ -766,23 +766,21 @@ int check_routeness (
 			City *unsummoned = find_city_in_pool_to_replace(ids_sorted_by_d, K, adj_city, D);
 					
 			int worth_to_replace = 0;
-			
-			if (unsummoned != NULL) {
-				
+			int short_enough = 0;			
+
+			if (unsummoned != NULL) {	
 				if (unsummoned->accum_route_len < adj_city->accum_route_len) {
 					worth_to_replace = 1;
-				} else if (unsummoned->accum_route_len == adj_city->accum_route_len) {
+				} /*else if (unsummoned->accum_route_len == adj_city->accum_route_len) {
 					if (D[unsummoned->accum_max_priority_city_id] < D[adj_city->accum_max_priority_city_id]) {
 						worth_to_replace = 1;
-					} else if (D[unsummoned->accum_max_priority_city_id] == D[adj_city->accum_max_priority_city_id]) {
-						if (D[unsummoned->accum_min_priority_city_id] < D[adj_city->accum_min_priority_city_id]) {
-							worth_to_replace = 1;
-						}
 					}
-				}
+				} */
+				
+				short_enough = (*curr_route_len + pot_route->len - unsummoned->route_len_behind) < K;
 			}
 			
-			int need_to_replace = worth_to_replace && *curr_route_len < K;
+			int need_to_replace = worth_to_replace && short_enough;
 
 			if (need_to_replace) {
 				
@@ -801,14 +799,15 @@ int check_routeness (
 							priority_heap = unify(priority_heap, deleted);
 						}
 					}
-					(pot_route->len) -= unsummoned->route_len_behind;
-					
+					(pot_route->len) -= unsummoned->route_len_behind;	
 				} else {
 					(pot_route->len)--;
 				}
-				
+				//WARNING Medium random tree fails if do only -= unsummoned->route_len_behind.
+				//wrong unsummoned->route_len_behind
 				swap_complete (ids_sorted_by_d, unsummoned, adj_city);
-
+				
+				(*visited)[unsummoned->id] = 0;
                                 (*visited)[adj_city->id] = 0;
                                 (*d_pool)[adj_city->d_pool_index] = 0;
 			}	
@@ -882,21 +881,28 @@ int solution(int K, int C[], int D[], int N) {
 	//n log n time
 	accum_knots (leafs, size, min_priority);
 
+	//int *B = (int *)calloc(N, sizeof(int));
+
 	int max_route_len = 0;
 	// TOO SLOW with loop
 	for (int k=0; k<N; k++) {		
 		City *city = cities_by_id[ids_sorted_by_d[k]];
-		if (city->priority < max_priority || city->checked == 1) {
+		if (city->checked) {
 			continue;
+		}
+		if (city->priority < max_priority) {
+			break;
 		}
 
 		int *d_pool = (int *)calloc(K, sizeof(int));
 		int *B = (int *)calloc(N, sizeof(int));
 		drop(pot_route);
 		
-		priority_heap = unify(priority_heap, pot_route->priority_heap);
-		pot_route->priority_heap = NULL;
-		
+	//	priority_heap = unify(priority_heap, pot_route->priority_heap);
+	//	pot_route->priority_heap = NULL;
+		priority_heap =  unify(priority_heap, pot_route->firm_route);
+		pot_route->firm_route = NULL;		
+
 		int curr_route_len = 0;
 
 		check_routeness(
@@ -912,14 +918,20 @@ int solution(int K, int C[], int D[], int N) {
 			&B,
 			&curr_route_len);			
 
-		//Something wrong in logic. look last report		
+		//WARNING Something wrong in logic. Not reducings.	
 
-		while (pot_route->firm_route != NULL) {
-			Node *extracted = extract_max(&(pot_route->firm_route));
-			cities_by_id[extracted->key]->checked = 1;
+		while (pot_route->priority_heap != NULL) {
+			Node *extracted = extract_max(&(pot_route->priority_heap));
+			B[extracted->key] = 0;
 			priority_heap = unify(priority_heap, extracted);
-		}	
-	
+		}
+
+	/*	while (pot_route->firm_route != NULL) {
+                        Node *extracted = extract_max(&(pot_route->firm_route));
+                        cities_by_id[extracted->key]->checked = 1;
+                        priority_heap = unify(priority_heap, extracted);
+                } 	
+	*/
 		free(d_pool);	
 		free(B);
 
@@ -946,6 +958,7 @@ int solution(int K, int C[], int D[], int N) {
 	free(leafs);
 	free(A_C);
         free(A_D);
+	//free(B);
 
 	return max_route_len;
 }
